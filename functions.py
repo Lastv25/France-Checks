@@ -1,6 +1,7 @@
 import requests
 import polars as pl
 import json
+import unicodedata
 
 from models import FranceCompany, Jugement, Dirigeant
 
@@ -134,3 +135,14 @@ def parse_jugement_string(jugement_str: str) -> Jugement:
     Parse a single Jugement JSON string into a Jugement object
     """
     return Jugement.from_json_string(jugement_str)
+
+def remove_accents(input_str):
+    # Normalize string (NFD decomposes combined characters)
+    nfkd_form = unicodedata.normalize('NFD', input_str)
+    # Remove accent characters
+    only_ascii = ''.join([c for c in nfkd_form if not unicodedata.combining(c)])
+    return only_ascii
+
+def to_upper_no_accents(name):
+    no_accents = remove_accents(name)
+    return no_accents.upper()

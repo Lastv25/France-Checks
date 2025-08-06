@@ -1,7 +1,8 @@
 import streamlit as st
 import polars as pl
+from streamlit_agraph import agraph, Node, Edge, Config
 
-from functions import get_companies, get_company_info, get_pcl_record
+from functions import get_companies, get_company_info, get_pcl_record, remove_accents, to_upper_no_accents
 from models import FranceCompany
 
 st.set_page_config(
@@ -9,7 +10,10 @@ st.set_page_config(
     page_icon=":mag:",
 )
 
-st.title("France Checks")
+nodes = []
+edges = []
+
+st.title(":mag: France Checks")
 
 st.text("This app checks the existence of a company in France based on the provided first and last name.")
 st.warning(
@@ -113,3 +117,47 @@ if st.button("Check"):
             )
         else:
             st.info("No Procedures Collectives records found for the company.")
+
+    name = f"{first_name} {last_name}"
+    normalized_name = to_upper_no_accents(name)
+    graph_companies = result.filter(
+        pl.col("Dirigeants").str.contains(f"{normalized_name}", literal=True)
+    )
+
+    st.markdown("###### Graph Representation (only showing companies with matching director):")
+    nodes.append( Node(id="Person", 
+                   label=f"{first_name} {last_name}", 
+                   size=25,
+                   font={'color': 'white'},
+                   image="https://raw.githubusercontent.com/material-icons/material-icons-png/refs/heads/master/png/white/person/baseline-2x.png",
+                   shape="circularImage",)
+            ) 
+    for row in graph_companies.iter_rows(named=True):
+        nodes.append( Node(id=f"{row['Siren']}", 
+                label=row['CompanyName'],
+                color="green",
+                font={'color': 'white'},
+                size=25,
+                link=f"https://www.pappers.fr/entreprise/{row['Siren']}",
+                image="https://raw.githubusercontent.com/material-icons/material-icons-png/refs/heads/master/png/white/business/baseline-2x.png",
+                shape="circularImage",)
+                )
+        edges.append( Edge(source="Person",  
+                        target=f"{row['Siren']}", 
+                        ) 
+                    )
+
+    config = Config(width=700,
+                height=500,
+                directed=True, 
+                physics=True, 
+                hierarchical=False,
+                highlightColor="#F0F0F0",
+                nodeHighlightBehavior=True,
+                )
+
+    return_value = agraph(nodes=nodes, 
+                        edges=edges, 
+                        config=config)
+    
+
