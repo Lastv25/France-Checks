@@ -44,8 +44,12 @@ if st.button("Check"):
             "CompanyName": [],
             "PublicationDate": [],
             "Nature": [],
-            "Jugement": [],
             "Url": [],
+            "Jugement_Type": [],
+            "Jugement_Famille": [],
+            "Jugement_Nature": [],
+            "Jugement_Date": [],
+            "Jugement_Complement": [],
         }
     )
 
@@ -55,8 +59,12 @@ if st.button("Check"):
             "CompanyName": pl.String,
             "PublicationDate": pl.String,
             "Nature": pl.String,
-            "Jugement": pl.String,
             "Url": pl.String,
+            "Jugement_Type": pl.String,
+            "Jugement_Famille": pl.String,
+            "Jugement_Nature": pl.String,
+            "Jugement_Date": pl.String,
+            "Jugement_Complement": pl.String,
         }
     )
 
@@ -88,6 +96,19 @@ if st.button("Check"):
 
         if not pcl.is_empty():
             st.subheader("Procedures Collectives Records:")
-            st.dataframe(pcl)
+            st.dataframe(
+                pcl
+                .select(
+                    [
+                        pl.col("Siren"),
+                        pl.col("CompanyName"),
+                        pl.col("PublicationDate"),
+                        pl.col("Jugement_Nature"),
+                        pl.col("Jugement_Date"),
+                        pl.col("Jugement_Complement"),
+                        pl.col("Url"),
+                    ]
+                )
+            )
         else:
             st.info("No Procedures Collectives records found for the company.")
