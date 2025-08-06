@@ -31,6 +31,8 @@ with col2:
 if st.button("Check"):
     df = get_companies(first_name, last_name)
 
+    nbr_hits = df.height 
+
     companies = pl.DataFrame(schema=FranceCompany())
     companies = companies.cast(
         {
@@ -72,7 +74,9 @@ if st.button("Check"):
             "Jugement_Complement": pl.String,
         }
     )
-
+    processing_text = f"Found {nbr_hits} possible matches."
+    processing_bar = st.progress(0, text=processing_text+" Currently processing nbr 1")
+    process_complete = 0
     for row in df.iter_rows(named=True):
         try:
             company_info = get_company_info(row['Siren'])
@@ -90,8 +94,10 @@ if st.button("Check"):
                print(f"Failed to get PCL record for {row['Siren']}: {e}")
         except Exception as e:
             print(f"Failed to get company info for {row['Siren']}: {e}")
-
+        process_complete += 1
+        processing_bar.progress(int(process_complete/nbr_hits*100), text=processing_text+f" Currently processing {process_complete+1}")
     result = df.join(companies.drop("CompanyName"), on="Siren", how="left")
+    processing_bar.empty()
 
     if df.is_empty():
         st.warning("No company found.")
