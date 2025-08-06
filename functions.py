@@ -2,7 +2,7 @@ import requests
 import polars as pl
 import json
 
-from models import FranceCompany, Jugement
+from models import FranceCompany, Jugement, Dirigeant
 
 def get_companies(FirstName: str, LastName: str) -> pl.DataFrame:
     api_url = f"https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=search%28%22{FirstName}%22%29%20and%20search%28%22{LastName}%22%29&limit=100&offset=0&timezone=UTC&include_links=false&include_app_metas=false"
@@ -39,12 +39,20 @@ def get_company_info(Siren: str) -> FranceCompany:
 
     record = data["results"][0]
 
+    # Parse dirigeants data
+    dirigeants = []
+    if "dirigeants" in record and record["dirigeants"]:
+        for dirigeant_data in record["dirigeants"]:
+            dirigeants.append(Dirigeant(**dirigeant_data))
+    dirigeants_txt = "\n".join([d.display_info for d in dirigeants])
+
     company = FranceCompany(
         Siren=record["siren"],
         CompanyName=record["nom_complet"],
         Sector=record["activite_principale"],
         Address=record["siege"]["adresse"],
         CreationDate=record["date_creation"],
+        Dirigeants=dirigeants_txt
     )
 
     return company

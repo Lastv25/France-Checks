@@ -35,6 +35,7 @@ if st.button("Check"):
             "Sector": pl.String,
             "Address": pl.String,
             "CreationDate": pl.String,
+            "Dirigeants": pl.String,
         }
     )
 
