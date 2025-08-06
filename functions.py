@@ -1,17 +1,25 @@
-import requests
-import polars as pl
 import json
 import unicodedata
 
-from models import FranceCompany, Jugement, Dirigeant
+import polars as pl
+import requests
 
-def get_companies(FirstName: str, LastName: str) -> pl.DataFrame:
-    api_url = f"https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=search%28%22{FirstName}%22%29%20and%20search%28%22{LastName}%22%29&limit=100&offset=0&timezone=UTC&include_links=false&include_app_metas=false"
+from helpers.api_calls import (
+    get_company_info_from_recherche_entreprise,
+    get_publications_from_bodacc,
+)
+from helpers.entity_matching import (
+    compute_date_similarity_score,
+    compute_name_similarity_score,
+    compute_nationality_similarity_score,
+)
+from models.models import Dirigeant, FranceCompany, Jugement
 
-    response = requests.get(api_url, verify=False)
-    response.raise_for_status()
 
-    data = response.json()
+def get_companies(
+    FirstName: str, LastName: str, MaxNumberHits: int = 100
+) -> pl.DataFrame:
+    data = get_publications_from_bodacc(FirstName, LastName, MaxNumberHits)
 
     records = data["results"]
 
@@ -30,20 +38,30 @@ def get_companies(FirstName: str, LastName: str) -> pl.DataFrame:
     return df.unique(maintain_order=True)
 
 
-def get_company_info(Siren: str) -> FranceCompany:
-    api_url = f"https://recherche-entreprises.api.gouv.fr/search?q={Siren}&minimal=true&limite_matching_etablissements=1&include=siege%2Cdirigeants%2Cfinances%2Cscore&page=1&per_page=1"
+def get_company_info(Siren: str, ReferenceEntity: Dirigeant) -> FranceCompany:
+    data = get_company_info_from_recherche_entreprise(Siren)
 
-    response = requests.get(api_url, verify=False)
-    response.raise_for_status()
-
-    data = response.json()
-
+    # since we searched by siren only one result can be found by the
+    # api call
     record = data["results"][0]
 
     # Parse dirigeants data
     dirigeants = []
+    name_score_matches = []
+    date_score_matches = []
+    nationality_score_matches = []
     if "dirigeants" in record and record["dirigeants"]:
         for dirigeant_data in record["dirigeants"]:
+            current_director = Dirigeant(**dirigeant_data)
+            name_score_matches.append(
+                compute_name_similarity_score(ReferenceEntity, current_director)
+            )
+            date_score_matches.append(
+                compute_date_similarity_score(ReferenceEntity, current_director)
+            )
+            nationality_score_matches.append(
+                compute_nationality_similarity_score(ReferenceEntity, current_director)
+            )
             dirigeants.append(Dirigeant(**dirigeant_data))
     dirigeants_txt = "\n".join([d.display_info for d in dirigeants])
 
@@ -53,9 +71,11 @@ def get_company_info(Siren: str) -> FranceCompany:
         Sector=record["activite_principale"],
         Address=record["siege"]["adresse"],
         CreationDate=record["date_creation"],
-        Dirigeants=dirigeants_txt
+        Dirigeants=dirigeants_txt,
+        NamesScoresMax=max(name_score_matches),
+        BirthDateScoresMax=max(date_score_matches),
+        NationalityScoresMax=max(nationality_score_matches),
     )
-
     return company
 
 
@@ -84,48 +104,54 @@ def get_pcl_record(Siren: str) -> pl.DataFrame:
             pl.col("url_complete").alias("Url"),
         ]
     )
-    
+
     if len(df) == 0:
         return df.drop("Jugement").with_columns(
             pl.lit(None).alias("Jugement_Type"),
             pl.lit(None).alias("Jugement_Famille"),
             pl.lit(None).alias("Jugement_Nature"),
             pl.lit(None).alias("Jugement_Date"),
-            pl.lit(None).alias("Jugement_Complement")
+            pl.lit(None).alias("Jugement_Complement"),
         )
-    
+
     jugement_data = []
     for row in df.iter_rows(named=True):
-        jugement_str = row.get('Jugement', '')
+        jugement_str = row.get("Jugement", "")
         if jugement_str:
             jugement_obj = Jugement.from_json_string(jugement_str)
-            jugement_data.append({
-                'Jugement_Type': jugement_obj.type,
-                'Jugement_Famille': jugement_obj.famille,
-                'Jugement_Nature': jugement_obj.nature,
-                'Jugement_Date': jugement_obj.date,
-                'Jugement_Complement': jugement_obj.complementJugement
-            })
+            jugement_data.append(
+                {
+                    "Jugement_Type": jugement_obj.type,
+                    "Jugement_Famille": jugement_obj.famille,
+                    "Jugement_Nature": jugement_obj.nature,
+                    "Jugement_Date": jugement_obj.date,
+                    "Jugement_Complement": jugement_obj.complementJugement,
+                }
+            )
         else:
-            jugement_data.append({
-                'Jugement_Type': None,
-                'Jugement_Famille': None,
-                'Jugement_Nature': None,
-                'Jugement_Date': None,
-                'Jugement_Complement': None
-            })
-    
+            jugement_data.append(
+                {
+                    "Jugement_Type": None,
+                    "Jugement_Famille": None,
+                    "Jugement_Nature": None,
+                    "Jugement_Date": None,
+                    "Jugement_Complement": None,
+                }
+            )
+
     # Create a DataFrame with the parsed Jugement data
     jugement_df = pl.DataFrame(jugement_data)
-    
+
     # Join with the original DataFrame (excluding the original Jugement column)
-    result_df = df.select([
-        pl.col("Siren"),
-        pl.col("CompanyName"),
-        pl.col("PublicationDate"),
-        pl.col("Nature"),
-        pl.col("Url")
-    ]).hstack(jugement_df)
+    result_df = df.select(
+        [
+            pl.col("Siren"),
+            pl.col("CompanyName"),
+            pl.col("PublicationDate"),
+            pl.col("Nature"),
+            pl.col("Url"),
+        ]
+    ).hstack(jugement_df)
 
     return result_df
 
@@ -136,12 +162,14 @@ def parse_jugement_string(jugement_str: str) -> Jugement:
     """
     return Jugement.from_json_string(jugement_str)
 
+
 def remove_accents(input_str):
     # Normalize string (NFD decomposes combined characters)
-    nfkd_form = unicodedata.normalize('NFD', input_str)
+    nfkd_form = unicodedata.normalize("NFD", input_str)
     # Remove accent characters
-    only_ascii = ''.join([c for c in nfkd_form if not unicodedata.combining(c)])
+    only_ascii = "".join([c for c in nfkd_form if not unicodedata.combining(c)])
     return only_ascii
+
 
 def to_upper_no_accents(name):
     no_accents = remove_accents(name)

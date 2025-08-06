@@ -1,9 +1,20 @@
-import streamlit as st
 import polars as pl
-from streamlit_agraph import agraph, Node, Edge, Config
+import streamlit as st
 
-from functions import get_companies, get_company_info, get_pcl_record, remove_accents, to_upper_no_accents
-from models import FranceCompany
+# Disable unsecure warning
+import urllib3
+from streamlit_agraph import Config, Edge, Node, agraph
+
+from functions import (
+    get_companies,
+    get_company_info,
+    get_pcl_record,
+    remove_accents,
+    to_upper_no_accents,
+)
+from models.models import Dirigeant, FranceCompany
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 st.set_page_config(
     page_title="France Checks",
@@ -15,23 +26,30 @@ edges = []
 
 st.title(":mag: France Checks")
 
-st.text("This app checks the existence of a company in France based on the provided first and last name.")
+st.text(
+    "This app checks the existence of a company in France based on the provided first and last name."
+)
 st.warning(
-    "This app does not perform exact matching on the First Name and Last Name, results given need to be carefully reviewed. The source used is BODACC.", 
-    icon="⚠️"
+    "This app does not perform exact matching on the First Name and Last Name, results given need to be carefully reviewed. The source used is BODACC.",
+    icon="⚠️",
 )
 
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
     first_name = st.text_input("First Name")
 with col2:
     last_name = st.text_input("Last Name")
+with col3:
+    max_number_hits = st.number_input(
+        "Max Nbr of Bodacc Publications to find", value=100
+    )
 
 if st.button("Check"):
-    df = get_companies(first_name, last_name)
+    reference_entity = Dirigeant(**{"prenoms": first_name, "nom": last_name})
+    df = get_companies(first_name, last_name, max_number_hits)
 
-    nbr_hits = df.height 
+    nbr_hits = df.height
 
     companies = pl.DataFrame(schema=FranceCompany())
     companies = companies.cast(
@@ -42,6 +60,9 @@ if st.button("Check"):
             "Address": pl.String,
             "CreationDate": pl.String,
             "Dirigeants": pl.String,
+            "NamesScoresMax": pl.Int64,
+            "BirthDateScoresMax": pl.Int64,
+            "NationalityScoresMax": pl.Int64,
         }
     )
 
@@ -75,27 +96,35 @@ if st.button("Check"):
         }
     )
     processing_text = f"Found {nbr_hits} possible matches."
-    processing_bar = st.progress(0, text=processing_text+" Currently processing nbr 1")
+    processing_bar = st.progress(
+        0, text=processing_text + " Currently processing nbr 1"
+    )
     process_complete = 0
+    df = df.unique()
     for row in df.iter_rows(named=True):
         try:
-            company_info = get_company_info(row['Siren'])
+            company_info = get_company_info(row["Siren"], reference_entity)
+            print(company_info)
+            print("T" * 100)
 
             if company_info.CompanyName is not None:
-                companies = companies.vstack(pl.DataFrame([company_info.dict()]))
+                companies = companies.vstack(pl.DataFrame([company_info.model_dump()]))
 
             try:
-               print(f"Processing company: {row['Siren']}")
-               if row['Siren'] is not None:
-                   pcl_record = get_pcl_record(row['Siren'])
-                   if not pcl_record.is_empty():
-                       pcl = pcl.vstack(pcl_record)
+                print(f"Processing company: {row['Siren']}")
+                if row["Siren"] is not None:
+                    pcl_record = get_pcl_record(row["Siren"])
+                    if not pcl_record.is_empty():
+                        pcl = pcl.vstack(pcl_record)
             except Exception as e:
-               print(f"Failed to get PCL record for {row['Siren']}: {e}")
+                print(f"Failed to get PCL record for {row['Siren']}: {e}")
         except Exception as e:
             print(f"Failed to get company info for {row['Siren']}: {e}")
         process_complete += 1
-        processing_bar.progress(int(process_complete/nbr_hits*100), text=processing_text+f" Currently processing {process_complete+1}")
+        processing_bar.progress(
+            int(process_complete / nbr_hits * 100),
+            text=processing_text + f" Currently processing {process_complete+1}",
+        )
     result = df.join(companies.drop("CompanyName"), on="Siren", how="left")
     processing_bar.empty()
 
@@ -103,13 +132,23 @@ if st.button("Check"):
         st.warning("No company found.")
     else:
         st.success("Companies found:")
+
+        # filtering results
+        selection = st.segmented_control(
+            "Filter on Name", ["Perfect match", "Strong Match", "All"]
+        )
+        selection = st.segmented_control(
+            "Filter on Date", ["Perfect match", "Strong Match", "All"]
+        )
+        selection = st.segmented_control(
+            "Filter on Nationality", ["Perfect match", "Strong Match", "All"]
+        )
         st.dataframe(result)
 
         if not pcl.is_empty():
             st.subheader("Procedures Collectives Records:")
             st.dataframe(
-                pcl
-                .select(
+                pcl.select(
                     [
                         pl.col("Siren"),
                         pl.col("CompanyName"),
@@ -130,40 +169,47 @@ if st.button("Check"):
         pl.col("Dirigeants").str.contains(f"{normalized_name}", literal=True)
     )
 
-    st.markdown("###### Graph Representation (only showing companies with matching director):")
-    nodes.append( Node(id="Person", 
-                   label=f"{first_name} {last_name}", 
-                   size=25,
-                   font={'color': 'white'},
-                   image="https://raw.githubusercontent.com/material-icons/material-icons-png/refs/heads/master/png/white/person/baseline-2x.png",
-                   shape="circularImage",)
-            ) 
+    st.markdown(
+        "###### Graph Representation (only showing companies with matching director):"
+    )
+    nodes.append(
+        Node(
+            id="Person",
+            label=f"{first_name} {last_name}",
+            size=25,
+            font={"color": "white"},
+            image="https://raw.githubusercontent.com/material-icons/material-icons-png/refs/heads/master/png/white/person/baseline-2x.png",
+            shape="circularImage",
+        )
+    )
     for row in graph_companies.iter_rows(named=True):
-        nodes.append( Node(id=f"{row['Siren']}", 
-                label=row['CompanyName'],
+        nodes.append(
+            Node(
+                id=f"{row['Siren']}",
+                label=row["CompanyName"],
                 color="green",
-                font={'color': 'white'},
+                font={"color": "white"},
                 size=25,
                 link=f"https://www.pappers.fr/entreprise/{row['Siren']}",
                 image="https://raw.githubusercontent.com/material-icons/material-icons-png/refs/heads/master/png/white/business/baseline-2x.png",
-                shape="circularImage",)
-                )
-        edges.append( Edge(source="Person",  
-                        target=f"{row['Siren']}", 
-                        ) 
-                    )
+                shape="circularImage",
+            )
+        )
+        edges.append(
+            Edge(
+                source="Person",
+                target=f"{row['Siren']}",
+            )
+        )
 
-    config = Config(width=700,
-                height=500,
-                directed=True, 
-                physics=True, 
-                hierarchical=False,
-                highlightColor="#F0F0F0",
-                nodeHighlightBehavior=True,
-                )
+    config = Config(
+        width=700,
+        height=500,
+        directed=True,
+        physics=True,
+        hierarchical=False,
+        highlightColor="#F0F0F0",
+        nodeHighlightBehavior=True,
+    )
 
-    return_value = agraph(nodes=nodes, 
-                        edges=edges, 
-                        config=config)
-    
-
+    return_value = agraph(nodes=nodes, edges=edges, config=config)
