@@ -6,6 +6,7 @@ import requests
 
 from helpers.api_calls import (
     get_company_info_from_recherche_entreprise,
+    get_pcl_record_from_bodacc,
     get_publications_from_bodacc,
 )
 from helpers.entity_matching import (
@@ -47,9 +48,9 @@ def get_company_info(Siren: str, ReferenceEntity: Dirigeant) -> FranceCompany:
 
     # Parse dirigeants data
     dirigeants = []
-    name_score_matches = []
-    date_score_matches = []
-    nationality_score_matches = []
+    name_score_matches = [0]
+    date_score_matches = [0]
+    nationality_score_matches = [0]
     if "dirigeants" in record and record["dirigeants"]:
         for dirigeant_data in record["dirigeants"]:
             current_director = Dirigeant(**dirigeant_data)
@@ -80,12 +81,7 @@ def get_company_info(Siren: str, ReferenceEntity: Dirigeant) -> FranceCompany:
 
 
 def get_pcl_record(Siren: str) -> pl.DataFrame:
-    api_url = f"https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=search%28%22Proc%C3%A9dures%20collectives%22%29%20and%20search%28%22{Siren}%22%29&limit=100&offset=0&timezone=UTC&include_links=false&include_app_metas=false"
-
-    response = requests.get(api_url, verify=False)
-    response.raise_for_status()
-
-    data = response.json()
+    data = get_pcl_record_from_bodacc(Siren)
 
     records = data["results"]
 

@@ -30,10 +30,13 @@ def compute_date_similarity_score(ReferenceEntity, InputEntity):
     """
     returns a value between 0 and 200 where 200 is a perfect match
     """
-    if InputEntity.date_de_naissance is None:
+    if InputEntity.date_de_naissance is None or len(InputEntity.date_de_naissance) == 0:
         return 0
 
-    if ReferenceEntity.date_de_naissance is None:
+    if (
+        ReferenceEntity.date_de_naissance is None
+        or len(ReferenceEntity.date_de_naissance) == 0
+    ):
         return 0
     # this only works because date_de_naissance is formatted like YYYY-mm
     input_month = int(InputEntity.date_de_naissance.split("-")[1])
@@ -45,7 +48,7 @@ def compute_date_similarity_score(ReferenceEntity, InputEntity):
     delta_months = abs(ref_month - input_month)
     delta_year = abs(ref_year - input_year)
 
-    score_months = (1 - delta_months / 11.0) * 100
+    score_months = (1 - delta_months // 11.0) * 100
     if delta_year == 0:
         score_years = 100
     elif delta_year == 1:

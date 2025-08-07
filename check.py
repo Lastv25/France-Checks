@@ -34,19 +34,44 @@ st.warning(
     icon="⚠️",
 )
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     first_name = st.text_input("First Name")
 with col2:
     last_name = st.text_input("Last Name")
 with col3:
-    max_number_hits = st.number_input(
-        "Max Nbr of Bodacc Publications to find", value=100
+    birthdate = st.text_input("Birthdate")
+with col4:
+    nationality = st.text_input("Nationality")
+# filtering results
+col5, col6, col7 = st.columns(3)
+with col5:
+    name_filter = st.segmented_control(
+        "Filter on Name",
+        ["Perfect match", "Strong Match", "All"],
+        default="Perfect match",
     )
-
+with col6:
+    date_filter = st.segmented_control(
+        "Filter on Date", ["Perfect match", "Strong Match", "All"], default="All"
+    )
+with col7:
+    nationality_filter = st.segmented_control(
+        "Filter on Nationality", ["Perfect match", "Strong Match", "All"], default="All"
+    )
+# max hits
+max_number_hits = st.number_input("Max Nbr of Bodacc Publications to find", value=100)
+# max hits
 if st.button("Check"):
-    reference_entity = Dirigeant(**{"prenoms": first_name, "nom": last_name})
+    reference_entity = Dirigeant(
+        **{
+            "prenoms": first_name,
+            "nom": last_name,
+            "date_de_naissance": birthdate,
+            "nationalite": nationality,
+        }
+    )
     df = get_companies(first_name, last_name, max_number_hits)
 
     nbr_hits = df.height
@@ -102,16 +127,42 @@ if st.button("Check"):
     process_complete = 0
     df = df.unique()
     for row in df.iter_rows(named=True):
+        process_complete += 1
+        processing_bar.progress(
+            int(process_complete / nbr_hits * 100),
+            text=processing_text + f" Currently processing {process_complete}",
+        )
         try:
+            print(f'Fetching company info for {row["Siren"]}')
             company_info = get_company_info(row["Siren"], reference_entity)
-            print(company_info)
-            print("T" * 100)
 
+            if name_filter != "All":
+                if name_filter == "Perfect match":
+                    if company_info.NamesScoresMax != 100:
+                        continue
+                else:
+                    if company_info.NamesScoresMax <= 80:
+                        continue
+
+            if date_filter != "All":
+                if date_filter == "Perfect match":
+                    if company_info.BirthDateScoresMax != 200:
+                        continue
+                else:
+                    if company_info.BirthDateScoresMax <= 150:
+                        continue
+            if nationality_filter != "All":
+                if nationality_filter == "Perfect match":
+                    if company_info.NationalityScoresMax != 100:
+                        continue
+                else:
+                    if company_info.NationalityScoresMax <= 80:
+                        continue
             if company_info.CompanyName is not None:
                 companies = companies.vstack(pl.DataFrame([company_info.model_dump()]))
 
             try:
-                print(f"Processing company: {row['Siren']}")
+                print(f"Fetching PCL For: {row['Siren']}")
                 if row["Siren"] is not None:
                     pcl_record = get_pcl_record(row["Siren"])
                     if not pcl_record.is_empty():
@@ -120,30 +171,28 @@ if st.button("Check"):
                 print(f"Failed to get PCL record for {row['Siren']}: {e}")
         except Exception as e:
             print(f"Failed to get company info for {row['Siren']}: {e}")
-        process_complete += 1
-        processing_bar.progress(
-            int(process_complete / nbr_hits * 100),
-            text=processing_text + f" Currently processing {process_complete+1}",
-        )
-    result = df.join(companies.drop("CompanyName"), on="Siren", how="left")
+
+    result = df.join(companies.drop("CompanyName"), on="Siren")
+    result = result.unique()
     processing_bar.empty()
 
     if df.is_empty():
         st.warning("No company found.")
     else:
-        st.success("Companies found:")
+        st.success("Companies found from bodacc publications:")
 
-        # filtering results
-        selection = st.segmented_control(
-            "Filter on Name", ["Perfect match", "Strong Match", "All"]
+        st.dataframe(
+            result.select(
+                [
+                    "Siren",
+                    "CompanyName",
+                    "Sector",
+                    "Address",
+                    "CreationDate",
+                    "Dirigeants",
+                ]
+            )
         )
-        selection = st.segmented_control(
-            "Filter on Date", ["Perfect match", "Strong Match", "All"]
-        )
-        selection = st.segmented_control(
-            "Filter on Nationality", ["Perfect match", "Strong Match", "All"]
-        )
-        st.dataframe(result)
 
         if not pcl.is_empty():
             st.subheader("Procedures Collectives Records:")
@@ -161,7 +210,7 @@ if st.button("Check"):
                 )
             )
         else:
-            st.info("No Procedures Collectives records found for the company.")
+            st.info("No Procedures Collectives records found for the companies.")
 
     name = f"{first_name} {last_name}"
     normalized_name = to_upper_no_accents(name)
