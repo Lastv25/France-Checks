@@ -1,7 +1,8 @@
-from typing import Dict, List, Literal, Optional, Union
 import json
+from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, constr, field_validator
+
 
 class Jugement(BaseModel):
     type: Optional[str] = None
@@ -9,9 +10,9 @@ class Jugement(BaseModel):
     nature: Optional[str] = None
     date: Optional[str] = None
     complementJugement: Optional[str] = None
-    
+
     @classmethod
-    def from_json_string(cls, json_string: str) -> 'Jugement':
+    def from_json_string(cls, json_string: str) -> "Jugement":
         """Parse a JSON string into a Jugement object"""
         if not json_string:
             return cls()
@@ -22,19 +23,22 @@ class Jugement(BaseModel):
             # Return empty model if parsing fails
             return cls()
 
+
 class Dirigeant(BaseModel):
     """Model for company directors/managers"""
+
     # For physical persons
-    nom: Optional[str] = None
-    prenoms: Optional[str] = None
+    # constr forces string input to be as UPPER
+    nom: Optional[constr(to_upper=True)] = None
+    prenoms: Optional[constr(to_upper=True)] = None
     annee_de_naissance: Optional[str] = None
     date_de_naissance: Optional[str] = None
-    nationalite: Optional[str] = None
-    
+    nationalite: Optional[constr(to_upper=True)] = None
+
     # For legal entities
     siren: Optional[str] = None
     denomination: Optional[str] = None
-    
+
     # Common fields
     qualite: Optional[str] = None
     type_dirigeant: Optional[str] = None
@@ -57,8 +61,9 @@ class Dirigeant(BaseModel):
             parts = [self.display_name]
             if self.date_de_naissance:
                 parts.append(f"Né(e) le {self.date_de_naissance}")
-            parts.append(self.qualite or 'Sans Qualité')
+            parts.append(self.qualite or "Sans Qualité")
             return " - ".join(parts)
+
 
 class FranceCompany(BaseModel):
     Siren: Optional[str] = None
@@ -67,3 +72,6 @@ class FranceCompany(BaseModel):
     Address: Optional[str] = None
     CreationDate: Optional[str] = None
     Dirigeants: Optional[str] = None
+    NamesScoresMax: Optional[int] = None
+    BirthDateScoresMax: Optional[int] = None
+    NationalityScoresMax: Optional[int] = None
