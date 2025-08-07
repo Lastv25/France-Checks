@@ -63,7 +63,7 @@ def compute_date_similarity_score(ReferenceEntity, InputEntity):
 def compute_nationality_similarity_score(ReferenceEntity, InputEntity):
     if InputEntity.nationalite is None:
         return 0
-    if ReferenceEntity.date_de_naissance is None:
+    if ReferenceEntity.nationalite is None:
         return 0
     match_ratio = compare_names(ReferenceEntity.nationalite, InputEntity.nationalite)
     return match_ratio
