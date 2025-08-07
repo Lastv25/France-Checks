@@ -42,16 +42,34 @@ def get_publications_from_bodacc(
 ) -> dict:
     if MaxNumberHits is None or MaxNumberHits <= 0:
         max_nbr_hits = 100
+        offsets = [0]
         print("Wrong input value for nbr of hits so setting it to 100")
+    elif MaxNumberHits > 100:
+        offsets = [x for x in range(0, MaxNumberHits, 100)]
+        max_nbr_hits = 100
+
     else:
+        offsets = [0]
         max_nbr_hits = MaxNumberHits
-    api_url = f"https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=search%28%22{FirstName}%22%29%20and%20search%28%22{LastName}%22%29&limit={max_nbr_hits}&offset=0&timezone=UTC&include_links=false&include_app_metas=false"
 
-    response = requests.get(api_url, verify=False)
-    response.raise_for_status()
+    full_data = {}
+    # since the limit field is maxed to 100 we need to use offset to get all the max_nbr_hits
+    for offset in offsets:
+        api_url = f"https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records?where=search%28%22{FirstName}%22%29%20and%20search%28%22{LastName}%22%29&limit={max_nbr_hits}&offset={offset}&timezone=UTC&include_links=false&include_app_metas=false"
 
-    data = response.json()
-    return data
+        response = requests.get(api_url, verify=False)
+        response.raise_for_status()
+
+        data = response.json()
+        total_count = data.get("total_count")
+        if offset == 0:
+            full_data = data
+        else:
+            full_data["results"] += data["results"]
+        if offset + 100 >= total_count:
+            break
+
+    return full_data
 
 
 # can only be called 7 times per seconds

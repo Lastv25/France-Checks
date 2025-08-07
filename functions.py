@@ -24,7 +24,7 @@ def get_companies(
 
     records = data["results"]
 
-    df = pl.DataFrame(records)
+    df = pl.DataFrame(records, infer_schema_length=10000)
 
     df = df.select(
         [
