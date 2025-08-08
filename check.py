@@ -231,7 +231,10 @@ if st.button("Check"):
             shape="circularImage",
         )
     )
+    already_exists = []
     for row in graph_companies.iter_rows(named=True):
+        if f"{row['Siren']}" in already_exists:
+            continue
         nodes.append(
             Node(
                 id=f"{row['Siren']}",
@@ -244,6 +247,7 @@ if st.button("Check"):
                 shape="circularImage",
             )
         )
+        already_exists.append(f"{row['Siren']}")
         edges.append(
             Edge(
                 source="Person",
