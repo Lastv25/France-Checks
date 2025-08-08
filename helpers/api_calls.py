@@ -74,8 +74,8 @@ def get_publications_from_bodacc(
 
 # can only be called 7 times per seconds
 @rate_limited(7, 1)
-def get_company_info_from_recherche_entreprise(Siren: str) -> dict:
-    api_url = f"https://recherche-entreprises.api.gouv.fr/search?q={Siren}&minimal=true&limite_matching_etablissements=1&include=siege%2Cdirigeants%2Cfinances%2Cscore&page=1&per_page=1"
+def get_company_info_from_recherche_entreprise(Siren: str, limit_establishments: int = 1) -> dict:
+    api_url = f"https://recherche-entreprises.api.gouv.fr/search?q={Siren}&minimal=true&limite_matching_etablissements={limit_establishments}&include=siege%2Cdirigeants%2Cfinances%2Cscore&page=1&per_page=1"
 
     response = requests.get(api_url, verify=False)
     response.raise_for_status()

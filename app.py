@@ -4,6 +4,7 @@ import streamlit as st
 pages = [
     st.Page("app_pages/introduction.py", title="Introduction"),
     st.Page("app_pages/check.py", title="Natural Person Check"),
+    st.Page("app_pages/company.py", title="Company View"),
 ]
 
 # Adding pages to the sidebar navigation
